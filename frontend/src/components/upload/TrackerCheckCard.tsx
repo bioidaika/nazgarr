@@ -1,11 +1,11 @@
-import { LoaderCircleIcon, ScanSearchIcon, TriangleAlertIcon } from 'lucide-react'
+import { CheckIcon, ExternalLinkIcon, LoaderCircleIcon, ScanSearchIcon, TriangleAlertIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 
 import { useVerifyTarget, type UploadDupe as Dupe, type UploadJob, type UploadTarget } from '@/api/hooks/uploads'
 import { UploadStatusBadge } from '@/components/upload/UploadStatusBadge'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { t, uiLocale } from '@/lib/i18n'
 import { formatBytes } from '@/lib/library-filters'
@@ -16,6 +16,8 @@ import { safeHref } from '@/lib/safeUrl'
 const VERDICT_STYLE: Record<Dupe['verdict'], string> = {
   identical: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
   same_slot: 'border-red-500/40 bg-red-500/15 text-red-700 dark:text-red-300',
+  trump: 'border-violet-500/40 bg-violet-500/15 text-violet-700 dark:text-violet-300',
+  possible: 'border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300',
   different: 'border-zinc-400/40 bg-zinc-400/15 text-zinc-600 dark:text-zinc-300',
 }
 
@@ -51,9 +53,38 @@ function Verification({ dupe }: { dupe: Dupe }) {
   return <span className={ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{text}</span>
 }
 
+function signedPercent(delta: number) {
+  const value = Math.round(delta * 100)
+  return `${value > 0 ? '+' : ''}${value}%`
+}
+
+// Motivi del verdetto, tratti ignoti e un torrent senza seeder (nazgarr/upload/dupes.py).
+function dupeNotes(dupe: Dupe): string[] {
+  const notes = dupe.reasons.map((reason) =>
+    reason === 'size_gap' && dupe.size_delta != null
+      ? t('upload.dupes.reason.size_gap', { delta: signedPercent(dupe.size_delta) })
+      : t(`upload.dupes.reason.${reason}`),
+  )
+  const close = dupe.verdict !== 'different' && dupe.verdict !== 'identical'
+  if (close && dupe.unknown.length > 0) {
+    notes.push(t('upload.dupes.unknown', { traits: dupe.unknown.map((trait) => t(`upload.dupes.trait.${trait}`)).join(', ') }))
+  }
+  if (dupe.seeders === 0 && dupe.verdict !== 'different') {
+    notes.push(t(dupe.verdict === 'identical' ? 'upload.dupes.deadIdentical' : 'upload.dupes.dead'))
+  }
+  return notes
+}
+
 // Motivi e verifica in una riga: per il title quando su desktop si tronca.
 function dupeDetails(dupe: Dupe): string {
-  return [...dupe.reasons.map((reason) => t(`upload.dupes.reason.${reason}`)), verificationText(dupe)].filter(Boolean).join(' · ')
+  return [...dupeNotes(dupe), verificationText(dupe)].filter(Boolean).join(' · ')
+}
+
+// Un identico senza seeder, verificato: il reseed lo resuscita, e la
+// resurrection va rivendicata sul tracker prima che parta (decisione
+// dell'utente, 2026-11-07). Un avviso, mai un blocco: la conferma lo richiede.
+export function needsResurrectionClaim(dupe: Dupe | undefined): boolean {
+  return dupe?.verdict === 'identical' && dupe.seeders === 0 && dupe.verification?.status === 'passed'
 }
 
 function languageName(code: string) {
@@ -75,10 +106,15 @@ export function TrackerCheckCard({
   job,
   target,
   children,
+  claimed = false,
+  onClaimedChange,
 }: {
   job: UploadJob
   target: UploadTarget
   children?: ReactNode
+  // La resurrection di un identico senza seeder segnata come rivendicata (DecisionStep).
+  claimed?: boolean
+  onClaimedChange?: (claimed: boolean) => void
 }) {
   const verify = useVerifyTarget(job.id)
   const dupes = target.dupes
@@ -90,6 +126,8 @@ export function TrackerCheckCard({
   const truncated = job.analysis?.dupes_truncated?.[String(target.id)]
   // La lingua del tracker nell'audio del file (nazgarr/upload/naming.py audio_language_check).
   const language = job.analysis?.languages?.[String(target.tracker_id)]
+  const hasPossible = dupes.some((dupe) => dupe.verdict === 'possible')
+  const hasTrump = dupes.some((dupe) => dupe.verdict === 'trump')
 
   return (
     <Card className="min-w-0">
@@ -154,6 +192,7 @@ export function TrackerCheckCard({
                   >
                     <Badge variant="outline" className={cn('justify-self-start', VERDICT_STYLE[dupe.verdict])}>
                       {t(`upload.dupes.verdict.${dupe.verdict}`)}
+                      {dupe.score != null && <span className="tabular-nums opacity-80">{t('upload.dupes.score', { score: dupe.score })}</span>}
                     </Badge>
                     <div className="grid min-w-0">
                       {url ? (
@@ -163,10 +202,10 @@ export function TrackerCheckCard({
                       ) : (
                         <span className={DUPE_NAME} title={dupe.name}>{dupe.name}</span>
                       )}
-                      {(dupe.reasons.length > 0 || dupe.verification) && (
+                      {(dupeNotes(dupe).length > 0 || dupe.verification) && (
                         <span className="text-muted-foreground max-sm:break-words sm:truncate" title={dupeDetails(dupe)}>
-                          {dupe.reasons.map((reason) => t(`upload.dupes.reason.${reason}`)).join(' · ')}
-                          {dupe.reasons.length > 0 && dupe.verification && ' · '}
+                          {dupeNotes(dupe).join(' · ')}
+                          {dupeNotes(dupe).length > 0 && dupe.verification && ' · '}
                           <Verification dupe={dupe} />
                         </span>
                       )}
@@ -193,16 +232,59 @@ export function TrackerCheckCard({
                           {verifying ? t('upload.dupes.verifying') : t('upload.dupes.verify')}
                         </Button>
                       )}
+                      {dupe.seeders != null && (
+                        <span className={cn('tabular-nums', dupe.seeders === 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+                          {t('upload.dupes.seeders', { count: dupe.seeders })}
+                        </span>
+                      )}
                       {/* Non tutti i tracker danno la dimensione: senza, niente "null B". */}
                       {dupe.size_bytes != null && (
                         <span className="text-muted-foreground tabular-nums">{formatBytes(dupe.size_bytes)}</span>
                       )}
                     </div>
+                    {onClaimedChange && needsResurrectionClaim(dupe) && (
+                      <div className="col-span-full grid gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2">
+                        <p className="flex items-start gap-2">
+                          <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+                          {claimed ? t('upload.dupes.resurrectionDone') : t('upload.dupes.resurrection')}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {url && (
+                            <a
+                              href={safeHref(url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'h-7 pointer-coarse:h-9' })}
+                            >
+                              <ExternalLinkIcon className="size-3.5" />
+                              {t('upload.dupes.resurrectionOpen')}
+                            </a>
+                          )}
+                          <Button
+                            size="sm"
+                            variant={claimed ? 'secondary' : 'outline'}
+                            className="h-7 pointer-coarse:h-9"
+                            aria-pressed={claimed}
+                            onClick={() => onClaimedChange(!claimed)}
+                          >
+                            <CheckIcon className="size-3.5" />
+                            {t('upload.dupes.resurrectionClaimed')}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 )
               })}
             </ul>
           )}
+          {hasPossible && (
+            <p className="flex items-start gap-2 text-xs text-amber-600 dark:text-amber-400">
+              <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+              {t('upload.dupes.possibleHint')}
+            </p>
+          )}
+          {hasTrump && <p className="text-xs text-violet-700 dark:text-violet-300">{t('upload.dupes.trumpHint')}</p>}
         </div>
         {children && (
           <div className="grid min-w-0 gap-2">

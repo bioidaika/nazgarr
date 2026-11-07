@@ -8,7 +8,8 @@ const verify = vi.fn()
 vi.mock('@/api/hooks/uploads', () => ({ useVerifyTarget: () => ({ mutate: verify, isPending: false }) }))
 
 const dupe = (id: string, verdict: string, extra = {}) => ({
-  torrent_id_remote: id, name: `Release.${id}`, size_bytes: 1e9, verdict, reasons: [], verification: null, ...extra,
+  torrent_id_remote: id, name: `Release.${id}`, size_bytes: 1e9, verdict, score: null, reasons: [], unknown: [],
+  seeders: null, size_delta: null, verification: null, ...extra,
 })
 
 const target = {
@@ -60,6 +61,44 @@ describe('TrackerCheckCard', () => {
 
     render(<TrackerCheckCard job={job} target={target} />)
     expect(screen.queryByText(/more results than were read/)).toBeNull()
+  })
+
+  it('shows the score, what is not known, a dead dupe and a possible trump', () => {
+    const scored = {
+      ...target,
+      dupes: [
+        dupe('4', 'possible', { score: 44, unknown: ['codec', 'languages'] }),
+        dupe('5', 'same_slot', { score: 100, seeders: 0 }),
+        dupe('6', 'trump', { score: 100, reasons: ['size_gap'], size_delta: 0.25, seeders: 3 }),
+      ],
+    } as unknown as UploadTarget
+    render(<TrackerCheckCard job={job} target={scored} />)
+
+    expect(screen.getByText('Possible dupe')).toBeTruthy()
+    expect(screen.getByText('44%')).toBeTruthy()
+    expect(screen.getByText('not known: codec, audio languages')).toBeTruthy()
+    expect(screen.getByText('no seeders: your upload replaces it')).toBeTruthy()
+    expect(screen.getByText('another encode (+25%)')).toBeTruthy()
+    expect(screen.getByText('3 seed')).toBeTruthy()
+    expect(screen.getByText(/too little is known to call it a dupe/)).toBeTruthy()
+    expect(screen.getByText(/a different encode: upload it only if it is better/)).toBeTruthy()
+  })
+
+  it('asks to claim the resurrection of a dead identical torrent once its check passed', () => {
+    const onClaimedChange = vi.fn()
+    const passed = { status: 'passed', reason: null, ok: 40, pieces: 40 }
+    const dead = { ...target, dupes: [dupe('1', 'identical', { seeders: 0, verification: passed })] } as unknown as UploadTarget
+    render(<TrackerCheckCard job={job} target={dead} onClaimedChange={onClaimedChange} />)
+
+    expect(screen.getByText(/claim its resurrection on the tracker before the reseed starts/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Claimed' }))
+    expect(onClaimedChange).toHaveBeenCalledWith(true)
+    cleanup()
+
+    // Prima del controllo completo, nessun invito: il reseed non è ancora possibile.
+    const unchecked = { ...target, dupes: [dupe('1', 'identical', { seeders: 0 })] } as unknown as UploadTarget
+    render(<TrackerCheckCard job={job} target={unchecked} onClaimedChange={onClaimedChange} />)
+    expect(screen.queryByText(/claim its resurrection/)).toBeNull()
   })
 
   it("warns when no audio track is in the tracker's language", () => {

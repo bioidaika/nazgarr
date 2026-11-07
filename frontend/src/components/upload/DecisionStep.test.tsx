@@ -28,7 +28,8 @@ const job = {
   targets: [
     target(1, 'ITT'),
     target(2, 'Other', { suggested_action: 'skip', dupes: [
-      { torrent_id_remote: '7', name: 'Movie.2024.1080p-X', size_bytes: 1, verdict: 'same_slot', reasons: [], verification: null },
+      { torrent_id_remote: '7', name: 'Movie.2024.1080p-X', size_bytes: 1, verdict: 'same_slot', score: 100, reasons: [],
+        unknown: [], seeders: 2, size_delta: null, verification: null },
     ] }),
   ],
 } as unknown as UploadJob
@@ -49,6 +50,32 @@ describe('DecisionStep', () => {
       { target_id: 2, action: 'skip', name: null, flags: null, category_id: null, type_id: null, resolution_id: null,
         reseed_torrent_id: null },
     ])
+  })
+
+  it('asks for confirmation when a dead torrent is reseeded without claiming its resurrection', () => {
+    const passed = { status: 'passed', reason: null, ok: 9, pieces: 9 }
+    const dead = {
+      torrent_id_remote: '8', name: 'Movie.2024.1080p-Y', size_bytes: 1, verdict: 'identical', score: null,
+      reasons: [], unknown: [], seeders: 0, size_delta: null, verification: passed,
+    }
+    const reseed = {
+      ...job,
+      overrides: { source: 'WEB-DL' },
+      targets: [target(1, 'ITT', { suggested_action: 'reseed', reseed_torrent_id: '8', dupes: [dead],
+                                   tracker_base_url: 'https://itt.example' })],
+    } as unknown as UploadJob
+    render(<DecisionStep job={reseed} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(screen.getByText(/ITT: the reseed revives a torrent with no seeders/)).toBeTruthy()
+    // Un avviso, mai un blocco: si conferma comunque.
+    expect(screen.getByRole('button', { name: 'Queue anyway' })).toBeTruthy()
+
+    // Segnata come rivendicata (qui nella conferma), l'avviso sparisce.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Claimed' }).at(-1)!)
+    expect(screen.queryByText(/the reseed revives a torrent with no seeders/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and queue' }))
+    expect(approve.mock.calls.at(-1)![0].targets[0]).toMatchObject({ action: 'reseed', reseed_torrent_id: '8' })
   })
 
   it('can schedule the upload for a later time', () => {

@@ -1,4 +1,4 @@
-import { TriangleAlertIcon } from 'lucide-react'
+import { CheckIcon, ExternalLinkIcon, TriangleAlertIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -13,8 +13,8 @@ import { OverridesPanel } from '@/components/upload/OverridesPanel'
 import { PackMixedCard } from '@/components/upload/PackMixedCard'
 import { ScheduleField } from '@/components/upload/ScheduleField'
 import { TargetDecisionForm } from '@/components/upload/TargetDecisionForm'
-import { ActionBadge, TrackerCheckCard } from '@/components/upload/TrackerCheckCard'
-import { Button } from '@/components/ui/button'
+import { ActionBadge, TrackerCheckCard, needsResurrectionClaim } from '@/components/upload/TrackerCheckCard'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,8 @@ import { t } from '@/lib/i18n'
 import type { MediaInfoSummary } from '@/lib/mediainfo'
 import { packMixed, packMixedConfirmed } from '@/lib/pack'
 import { fromLocalInput } from '@/lib/schedule'
-import { effectiveDraft, plannedMediaInfo, sourceMissing, type TargetDraft } from '@/lib/upload'
+import { safeHref } from '@/lib/safeUrl'
+import { dupeUrl, effectiveDraft, plannedMediaInfo, sourceMissing, type TargetDraft } from '@/lib/upload'
 
 // Secondo punto di approvazione (docs/SPEC.md §9): cosa ha trovato
 // l'analisi, i valori rilevati da correggere e, per ogni tracker, dupe
@@ -37,6 +38,8 @@ export function DecisionStep({ job }: { job: UploadJob }) {
   const [edits, setEdits] = useState<Record<number, TargetDraft>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [overridesOpen, setOverridesOpen] = useState(false)
+  // I tracker la cui resurrection l'utente ha segnato come rivendicata.
+  const [claimed, setClaimed] = useState<Record<number, boolean>>({})
   // Quando parte: null = appena tocca a lui, se no il valore del campo data e ora.
   const [when, setWhen] = useState<string | null>(null)
   const approve = useApproveUpload(job.id)
@@ -60,6 +63,16 @@ export function DecisionStep({ job }: { job: UploadJob }) {
     packMixed(job) && !packMixedConfirmed(job) && drafts.some(({ draft }) => draft.action === 'upload')
       ? t('errors.upload_pack_mixed_unconfirmed', { fields: Object.keys(packMixed(job) ?? {}).map((f) => t(`pack.mixedField.${f}`)).join(', ') })
       : null
+
+  // Un reseed che resuscita un torrent senza seeder, senza la resurrection
+  // segnata come rivendicata: la conferma lo dice (decisione dell'utente, 2026-11-07).
+  const unclaimed = drafts.filter(
+    ({ target, draft }) =>
+      draft.action === 'reseed' &&
+      !claimed[target.id] &&
+      needsResurrectionClaim(target.dupes.find((dupe) => dupe.torrent_id_remote === draft.reseed_torrent_id)),
+  )
+  const warnUpload = missingSource && drafts.some(({ draft }) => draft.action === 'upload')
 
   function submit() {
     approve.mutate({
@@ -97,7 +110,13 @@ export function DecisionStep({ job }: { job: UploadJob }) {
         <AnalysisSummary job={job} />
       </Masonry>
       {drafts.map(({ target, draft }) => (
-        <TrackerCheckCard key={target.id} job={job} target={target}>
+        <TrackerCheckCard
+          key={target.id}
+          job={job}
+          target={target}
+          claimed={!!claimed[target.id]}
+          onClaimedChange={(value) => setClaimed((prev) => ({ ...prev, [target.id]: value }))}
+        >
           <TargetDecisionForm
             target={target}
             draft={draft}
@@ -127,8 +146,36 @@ export function DecisionStep({ job }: { job: UploadJob }) {
               </li>
             ))}
           </ul>
+          {unclaimed.map(({ target, draft }) => {
+            const url = dupeUrl(target, draft.reseed_torrent_id ?? '')
+            return (
+              <div key={target.id} className="grid gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p className="flex items-start gap-2">
+                  <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                  {t('upload.decision.resurrectionUnclaimed', { tracker: target.tracker_label })}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {url && (
+                    <a
+                      href={safeHref(url)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={buttonVariants({ variant: 'outline', size: 'sm', className: 'w-fit' })}
+                    >
+                      <ExternalLinkIcon className="size-3.5" />
+                      {t('upload.dupes.resurrectionOpen')}
+                    </a>
+                  )}
+                  <Button size="sm" variant="outline" className="w-fit" onClick={() => setClaimed((prev) => ({ ...prev, [target.id]: true }))}>
+                    <CheckIcon className="size-3.5" />
+                    {t('upload.dupes.resurrectionClaimed')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })}
           {/* Un avviso, non un blocco: la sorgente può essere già scritta a mano nel nome. */}
-          {missingSource && drafts.some(({ draft }) => draft.action === 'upload') && (
+          {warnUpload && (
             <div className="grid gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
               <p className="flex items-start gap-2">
                 <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-500" />
@@ -147,7 +194,7 @@ export function DecisionStep({ job }: { job: UploadJob }) {
             <Button disabled={approve.isPending || (when !== null && fromLocalInput(when) === null)} onClick={submit}>
               {when !== null
                 ? t('upload.decision.confirmScheduled')
-                : missingSource && drafts.some(({ draft }) => draft.action === 'upload')
+                : warnUpload || unclaimed.length > 0
                   ? t('upload.decision.confirmAnyway')
                   : t('upload.decision.confirm')}
             </Button>

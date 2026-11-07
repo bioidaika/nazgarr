@@ -50,6 +50,9 @@ export const uploadSettings = {
     'Una cartella con più stagioni che arriva nella cartella osservata (una serie intera) diventa un upload per stagione, ognuno con i soli suoi episodi, invece di un unico complete pack. Una stagione incompleta segue poi l’opzione qui sopra.',
   'uploadSettings.autoMatchDescription':
     'Per ogni upload, a mano o dalla cartella osservata: un match almeno così sicuro (0-1) viene confermato da solo; sotto, o quando due titoli si somigliano, aspetta te. Cambia match lo riporta indietro. 0 lo disattiva. Predefinito: 0.9.',
+  'uploadSettings.dupeThresholdLabel': 'Soglia del dupe check',
+  'uploadSettings.dupeThresholdDescription':
+    'Quanto di una release sul tracker deve essere noto e uguale alla tua (tipo, risoluzione, codec, HDR, lingue audio, stagione) per suggerire di non caricare (0-100). Sotto, è un possibile dupe e l’upload resta suggerito, con un avviso. Predefinito: 70.',
   'uploadSettings.autoRenameLabel': 'Rinomina i file in automatico',
   'uploadSettings.autoRenameHelp':
     'Acceso: i nomi del torrent in hardlink se c’è, altrimenti questo pattern per i file della libreria e le release della cartella osservata. Spento: ogni upload parte con i nomi originali; su ogni upload puoi comunque scegliere un’altra opzione.',

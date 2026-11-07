@@ -139,6 +139,14 @@ export function UploadReleasesSection() {
             type="number"
             placeholder="0.9"
           />
+          {/* La soglia del dupe check (nazgarr/upload/dupes.py): dupe sopra, possibile dupe sotto. */}
+          <SettingField
+            settingKey="upload_dupe_threshold"
+            label={t('uploadSettings.dupeThresholdLabel')}
+            description={t('uploadSettings.dupeThresholdDescription')}
+            type="number"
+            placeholder="70"
+          />
           {/* Accesa di default (nazgarr/upload/split.py): una stagione incompleta
               dalla cartella osservata diventa un upload per episodio. */}
           <SettingToggle
