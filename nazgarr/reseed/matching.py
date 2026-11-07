@@ -44,6 +44,7 @@ from nazgarr.core.models import (
     MatchAttempt,
     MatchReview,
     MediaFile,
+    MediaItem,
     SeedFile,
     SeedJob,
     Tracker,
@@ -66,6 +67,7 @@ from nazgarr.library.seeding import (
 )
 from nazgarr.reseed import review
 from nazgarr.reseed.download_links import stored_link
+from nazgarr.torrents import catalog_categories
 from nazgarr.torrents.layout import (
     CONFIDENCE_NO_MATCH,
     CONFIDENCE_PIECE_VERIFIED,  # noqa: F401  (riesportate: le soglie vivono in torrent_layout)
@@ -163,6 +165,18 @@ class MatchContext:
     _episode_mappings: dict = field(default_factory=dict)
     # media_item_id -> {torrent_id_remote: candidato da aggiornare} (_reusable_candidate).
     _reusable: dict[int, dict[str, Candidate]] = field(default_factory=dict)
+    _categories: dict[str, int] | None = None
+
+    def other_content_type(self, category_id: int | None, media_item_id: int) -> bool:
+        """Un torrent del catalogo dell'altro tipo di contenuto: un film e una
+        serie possono avere lo stesso id TMDB (nazgarr/torrents/catalog_categories.py)."""
+        if category_id is None:
+            return False
+        if self._categories is None:
+            self._categories = catalog_categories.category_map(self.session, self.tracker_row.id)
+        item = self.session.get(MediaItem, media_item_id) if self._categories else None
+        return item is not None and catalog_categories.other_content_type(category_id, item.content_type,
+                                                                         self._categories)
 
     _in_client: set[str] | None = None
     _queue: "review.ReviewQueue | None" = None
@@ -482,6 +496,8 @@ def match_file(ctx: MatchContext, anchor: MediaFile | SeedFile, media_item_id: i
         if returned is not None:
             returned.add(tc.torrent_id_remote)
         if tc.torrent_id_remote in skip:
+            continue
+        if ctx.other_content_type(getattr(tc, "category_id", None), media_item_id):
             continue
         if not catalog_names_safe(tc.file_list, tc.folder):
             logger.warning("Torrent %s del tracker %r con nomi di file non validi: ignorato",

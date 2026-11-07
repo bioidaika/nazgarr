@@ -22,7 +22,7 @@ import time
 from sqlalchemy.orm import Session
 
 from nazgarr.adapters.tracker.base import catalog_truncated
-from nazgarr.core import events
+from nazgarr.core import events, settings_registry
 from nazgarr.core.errors import CodedError
 from nazgarr.core.file_types import is_video
 from nazgarr.core.models import (
@@ -32,14 +32,18 @@ from nazgarr.core.models import (
     SeedFile,
     SonarrInstance,
     TorrentClient,
+    TrackerUploadProfile,
     UploadEvent,
     UploadJob,
 )
 from nazgarr.integrations import adapter_factory, arr
 from nazgarr.library import mediainfo as mediainfo_util
 from nazgarr.reseed import download_links
+from nazgarr.torrents import catalog_categories
 from nazgarr.upload import decision as upload_decision
 from nazgarr.upload import dovi_probe
+from nazgarr.upload import dupes as upload_dupes
+from nazgarr.upload import file_names as upload_file_names
 from nazgarr.upload import inventory as upload_inventory
 from nazgarr.upload import jobs as upload_jobs
 from nazgarr.upload import naming as upload_naming
@@ -271,21 +275,68 @@ def _single_name_source(job: UploadJob, files: list[tuple[str, int]], client_mat
     return None
 
 
-def summary_of(job: UploadJob, files: list[tuple[str, int]], analysis: dict | None = None) -> SourceSummary:
+def summary_of(
+    job: UploadJob, files: list[tuple[str, int]], analysis: dict | None = None, values: dict | None = None
+) -> SourceSummary:
     """analysis: per leggere i tratti dal nome scelto per la release
     (name_source: il torrent in seed, il nome originale di Radarr/Sonarr) e
-    la risoluzione da MediaInfo, invece che dal nome della cartella."""
+    dal MediaInfo, invece che dal nome della cartella. values: i valori del
+    nome della release con gli override (source_values): tipo, risoluzione
+    e codec come andranno al tracker. Senza file (un nuovo verdetto dei
+    risultati salvati, upload_dupes.rejudge) le dimensioni non servono."""
     analysis = analysis or {}
-    video = (analysis.get("mediainfo") or {}).get("video") or {}
+    mediainfo = analysis.get("mediainfo") or {}
+    video = mediainfo.get("video") or {}
+    values = values or {}
+    overrides = json.loads(job.overrides_json or "{}")
+    if overrides.get("hdr"):
+        hdr = upload_dupes.hdr_family(overrides["hdr"])
+    elif video:
+        hdr = upload_dupes.hdr_family(upload_naming.mi_hdr(video))
+    else:
+        hdr = None
     return SourceSummary(
         name=(analysis.get("name_source") or {}).get("name") or upload_pack.name(job),
-        resolution=upload_naming.mi_resolution(video) if video else None,
+        resolution=values.get("resolution") or (upload_naming.mi_resolution(video) if video else None),
         total_size_bytes=sum(s for _p, s in files),
         video_sizes=tuple(s for p, s in files if is_video(p)),
         kind=job.kind or "movie",
         seasons=frozenset(json.loads(job.seasons_json or "[]")),
         episode=job.episode,
+        release_type=values.get("type"),
+        codec=upload_dupes.codec_family(values.get("video_codec")) or upload_dupes.codec_family(video.get("format")),
+        hdr=hdr,
+        languages=upload_dupes.audio_languages(mediainfo.get("audio")) if mediainfo else None,
     )
+
+
+def source_values(session: Session, job: UploadJob) -> dict:
+    """I valori del nome della release senza le regole di un tracker: il
+    tipo, la risoluzione e il codec che il dupe check confronta, letti come
+    per il nome (MediaInfo, nome, override)."""
+    analysis = json.loads(job.analysis_json or "{}")
+    return upload_naming.release_values(
+        job, upload_file_names.name_detected(session, job), analysis.get("mediainfo"),
+        json.loads(job.overrides_json or "{}"), None)
+
+
+def profile_maps(session: Session, tracker_id: int) -> tuple[dict[str, int], dict[int, tuple[str, ...]]]:
+    """Dal profilo del tracker: le categorie (movie/tv -> id, per togliere i
+    torrent dell'altro tipo con lo stesso id TMDB) e i tipi (type_id -> le
+    chiavi dei profili, per il tipo dei torrent trovati)."""
+    profile = session.get(TrackerUploadProfile, tracker_id)
+    try:
+        types = json.loads(profile.type_id_map_json or "{}") if profile is not None else {}
+    except ValueError:
+        types = {}
+    return catalog_categories.category_map(session, tracker_id), upload_dupes.type_keys(types)
+
+
+def same_content(job: UploadJob, found: list, categories: dict[str, int]) -> list:
+    """I torrent trovati per l'id TMDB del job che sono del suo tipo: un
+    film e una serie possono avere lo stesso id (nazgarr/torrents/catalog_categories.py)."""
+    return [c for c in found
+            if not catalog_categories.other_content_type(getattr(c, "category_id", None), job.content_type, categories)]
 
 
 def seeding_here(target, client_matches: list[dict]) -> dict | None:
@@ -349,6 +400,7 @@ def _check_trackers(
     è più di questo job (_still_mine)."""
     seeding_by_target: dict[str, dict] = {}
     truncated_by_target: dict[str, int] = {}
+    threshold = settings_registry.get_int(session, upload_dupes.THRESHOLD_SETTING)
     for target in job.targets:
         if not _still_mine(session, job, run_id):
             return None
@@ -357,10 +409,11 @@ def _check_trackers(
         session.commit()
         failure: Exception | None = None
         try:
+            categories, keys = profile_maps(session, target.tracker_id)
             with adapter_factory.tracker(target.tracker) as adapter:
                 found = adapter.search_by_tmdb(job.tmdb_id)
                 _remember_rss_key(target, adapter)
-                results, suggested = check(found, summary)
+                results, suggested = check(same_content(job, found, categories), summary, keys, threshold)
                 for result in results:
                     # Mai la chiave personale nel DB (audit 2026-10-18).
                     result["download_link"] = download_links.stored_link(adapter, result["download_link"])
@@ -477,7 +530,8 @@ def handle(session: Session, job: UploadJob, worker) -> None:
 
     job.stage = "trackers"
     session.commit()
-    checked = _check_trackers(session, job, summary_of(job, files, analysis), client_matches, run.id)
+    summary = summary_of(job, files, analysis, source_values(session, job))
+    checked = _check_trackers(session, job, summary, client_matches, run.id)
     if checked is None or not _still_mine(session, job, run.id):
         logger.info("Upload %s: analisi interrotta (annullato, o ripresa da un'altra analisi)", job.id)
         return

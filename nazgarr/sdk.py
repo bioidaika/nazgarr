@@ -35,14 +35,16 @@ from nazgarr.adapters.tracker.base import (
     UploadFields,
     catalog_truncated,
 )
+from nazgarr.library.mediainfo_text import summarize as mediainfo_summary_from_text
 from nazgarr.plugins.registry import KINDS, AdapterContext, AdapterSpec, ConfigField, register
 
 # 1.1: AdapterSpec.icon; 1.2: CheveretoImageHost, chevereto_image_url; 1.3: stop(), CatalogResults,
 # catalog_truncated; 1.4: add_torrent(stopped=...), can_add_stopped e start() per i reseed,
 # list_largest_files(); 1.5: partial_file_suffix(), fermi anche i reseed del flusso degli upload;
 # 1.6: l'evento upload.seed_checked (docs/SDK.md, Events); 1.7: list_torrents(known=...) e
-# reusable_files, per riusare i file dell'ultima indicizzazione
-SDK_VERSION = "1.7.0"
+# reusable_files, per riusare i file dell'ultima indicizzazione; 1.8: TorrentCandidate.category_id,
+# type_id, resolution, seeders e media_info_summary (mediainfo_summary_from_text) per il dupe check
+SDK_VERSION = "1.8.0"
 
 __all__ = [
     "KINDS", "SDK_VERSION", "AdapterContext", "AdapterSpec", "CatalogResults", "CheveretoImageHost",
@@ -50,6 +52,6 @@ __all__ = [
     "MediaResolverAdapter", "NotSupportedError", "Notification", "NotificationAdapter", "NotificationError",
     "ResolvedMedia", "TorrentAddTimeoutError", "TorrentAlreadyInClientError", "TorrentCandidate",
     "TorrentClientAdapter", "TorrentRecord", "TorrentStatus", "TrackerAdapter", "TrackerRateLimitedError",
-    "UploadError", "UploadFields", "UploadedTorrent", "catalog_truncated", "chevereto_image_url", "register",
-    "reusable_files",
+    "UploadError", "UploadFields", "UploadedTorrent", "catalog_truncated", "chevereto_image_url",
+    "mediainfo_summary_from_text", "register", "reusable_files",
 ]

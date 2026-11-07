@@ -1811,6 +1811,27 @@ def test_a_dupe_that_appeared_after_the_decision_stops_that_tracker(db_session, 
     assert job.status == "partial"
 
 
+def test_a_dead_dupe_that_appeared_after_the_decision_does_not_stop_the_upload(db_session, tmp_path, env):
+    """Un dupe senza seeder: il nuovo torrent lo sostituisce (decisione
+    dell'utente, 2026-11-07), anche se compare dopo la decisione."""
+    from datetime import timedelta
+
+    from nazgarr.adapters.tracker.base import TorrentCandidate
+
+    video = write_video(env["root"] / "media" / "The.Matrix.1999.1080p.WEB-DL.H.264-GRP.mkv", 300 * KB)
+    job = _approved(db_session, env, "media/" + video.name, {"a": _upload("Matrix A"), "b": {"action": "skip"}},
+                    scheduled_at=datetime.now(UTC) + timedelta(hours=1))
+    dead = TorrentCandidate(torrent_id_remote="78", info_hash=None, name="The.Matrix.1999.1080p.WEB-DL.H.264-OTHER",
+                            size_bytes=300 * KB + 1, file_list=None, mediainfo_unique_id=None, seeders=0)
+    env["trackers"]["a"].catalog = [dead]
+    job.scheduled_at = datetime.now(UTC) - timedelta(seconds=1)
+    db_session.commit()
+
+    _run(db_session, tmp_path, job)
+
+    assert len(env["trackers"]["a"].uploads) == 1
+
+
 def test_a_truncated_catalogue_before_sending_is_said(db_session, tmp_path, env):
     """Audit 2026-10-18 (finding 51): il dupe check prima dell'invio non
     diceva che il tracker aveva più risultati di quelli letti."""
