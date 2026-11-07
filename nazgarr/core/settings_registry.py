@@ -61,6 +61,8 @@ _SPECS = [
     SettingSpec("rematch_interval_days", "float", 7.0, minimum=0),
     # Upload
     SettingSpec("upload_auto_match_threshold", "float", 0.9, minimum=0, maximum=1),
+    # Il punteggio (0-100) da cui un torrent del tracker nello stesso slot è un dupe (nazgarr/upload/dupes.py).
+    SettingSpec("upload_dupe_threshold", "int", 70, minimum=0, maximum=100),
     SettingSpec("upload_auto_rename", "bool", True),
     SettingSpec("upload_single_file", "bool", False),
     SettingSpec("upload_single_file_folder", "choice", "keep", choices=("keep", "remove")),

@@ -92,6 +92,41 @@ def test_analysis_checks_every_tracker_and_stops_at_the_decision(db_session, tmp
     assert "dupe_check_failed" in codes and codes[-1] == "analysis_done"
 
 
+def test_the_dupe_check_drops_the_other_content_type_and_follows_the_overrides(
+        db_session, tmp_path, monkeypatch, analyzing_job):
+    """movie/603 e tv/603 sono due cose diverse: la serie con lo stesso id
+    TMDB non entra nel dupe check di un film (le categorie del profilo
+    ITT). Il verdetto segue gli override: un tipo corretto a mano cambia
+    lo slot, senza chiedere di nuovo al tracker."""
+    from nazgarr.core.models import TrackerUploadProfile
+    from nazgarr.upload import decision as upload_decision
+    from nazgarr.upload import profiles as upload_profiles
+
+    for profile in db_session.query(TrackerUploadProfile):
+        upload_profiles.restore_upload_profile(db_session, profile, "itt")
+    series = TorrentCandidate(
+        torrent_id_remote="9", info_hash=None, name="Some Series S01 1080p WEB-DL H.264-X", size_bytes=59 * MB,
+        file_list=None, mediainfo_unique_id=None, category_id=2, type_id=4, resolution="1080p", seeders=4)
+    webrip = TorrentCandidate(
+        torrent_id_remote="7", info_hash=None, name="Movie Name 2024 1080p ITA-X", size_bytes=55 * MB,
+        file_list=None, mediainfo_unique_id=None, category_id=1, type_id=5, resolution="1080p", seeders=1)
+    trackers = {"a": _FakeTracker([series, webrip]), "b": _FakeTracker([])}
+    monkeypatch.setattr(upload_analysis.adapter_factory, "build_tracker_adapter", lambda t: trackers[t.label])
+
+    _run(db_session, tmp_path, analyzing_job)
+
+    a = analyzing_job.targets[0]
+    dupes = json.loads(a.dupes_json)
+    assert [(d["torrent_id_remote"], d["verdict"], d["reasons"]) for d in dupes] == [("7", "different", ["type"])]
+    assert a.suggested_action == "upload"
+
+    upload_decision.update_overrides(db_session, analyzing_job, {"type": "WEBRIP"})
+    db_session.refresh(a)
+    (dupe,) = json.loads(a.dupes_json)
+    # Ora lo stesso tipo: niente di diverso, ma codec, HDR e lingue non si sanno (nessun MediaInfo).
+    assert (dupe["verdict"], dupe["score"], dupe["unknown"]) == ("possible", 69, ["codec", "hdr", "languages"])
+
+
 def test_analysis_finds_the_source_already_seeding(db_session, tmp_path, monkeypatch, analyzing_job):
     monkeypatch.setattr(upload_analysis.adapter_factory, "build_tracker_adapter", lambda t: _FakeTracker())
     video = analyzing_job.source_path

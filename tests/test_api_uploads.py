@@ -686,10 +686,11 @@ def test_the_fixed_shapes_of_an_upload_are_typed_and_tolerate_older_rows():
         "verification": {"status": "passed", "info_hash": "ab", "pieces": 3, "ok": 3},
     })
     assert dupe.model_dump() == {
-        "torrent_id_remote": "77", "name": "", "size_bytes": None, "verdict": "identical", "reasons": [],
+        "torrent_id_remote": "77", "name": "", "size_bytes": None, "verdict": "identical", "score": None,
+        "reasons": [], "unknown": [], "seeders": None, "size_delta": None,
         "verification": {"status": "passed", "reason": None, "pieces": 3, "ok": 3, "mismatched": None,
                          "unreadable": None},
-    }  # mai il link di download
+    }  # mai il link di download, né i tratti salvati per il nuovo verdetto (release)
     layout = UploadLayoutResponse.model_validate({
         "kind": "season_pack", "content_type": "tv", "videos": [{"relative_path": "a.mkv", "size_bytes": 1,
                                                                    "season": 1, "episodes": [1]}],

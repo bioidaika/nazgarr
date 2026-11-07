@@ -172,10 +172,19 @@ def _render_target(target: dict, draft: dict) -> None:
     if draft["action"] == "reseed":
         console.print(f"  Reseed torrent {draft['reseed_torrent_id']}"
                       + (" (verified)" if _verified(target, draft["reseed_torrent_id"]) else " (not verified)"))
+        reseeded = next((d for d in dupes if d.get("torrent_id_remote") == draft["reseed_torrent_id"]), {})
+        if reseeded.get("seeders") == 0:
+            # Come nella decisione web (decisione dell'utente, 2026-11-07): un avviso, mai un blocco.
+            err_console.print("  [yellow]No seeders: the reseed revives it. Claim its resurrection on the tracker "
+                              "before approving, or it does not count.[/yellow]")
     if dupes:
         console.print(f"  On the tracker already: {len(dupes)} release(s), {identical} identical")
         for d in dupes[:5]:
-            console.print(f"    · {d.get('verdict')}: {d.get('name')} ({d.get('torrent_id_remote')})")
+            extra = [f"{d['score']}%" if d.get("score") is not None else None,
+                     f"{d['seeders']} seed" if d.get("seeders") is not None else None]
+            details = ", ".join(e for e in extra if e)
+            console.print(f"    · {d.get('verdict')}{f' ({details})' if details else ''}: {d.get('name')} "
+                          f"({d.get('torrent_id_remote')})")
     if target.get("error_message"):
         err_console.print(f"  [yellow]{target['error_message']}[/yellow]")
 

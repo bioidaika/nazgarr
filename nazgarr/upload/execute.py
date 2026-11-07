@@ -1764,14 +1764,18 @@ def _recheck_dupes(session: Session, job: UploadJob, targets: list[UploadTarget]
         files = upload_analysis.source_files(job)
     except OSError:
         return  # se ne accorge la preparazione, con il suo errore
-    summary = upload_analysis.summary_of(job, files, json.loads(job.analysis_json or "{}"))
+    summary = upload_analysis.summary_of(job, files, json.loads(job.analysis_json or "{}"),
+                                         upload_analysis.source_values(session, job))
+    threshold = settings_registry.get_int(session, upload_dupes.THRESHOLD_SETTING)
     for target in uploads:
         known = {d.get("torrent_id_remote") for d in json.loads(target.dupes_json or "[]")}
         try:
+            categories, keys = upload_analysis.profile_maps(session, target.tracker_id)
             with adapter_factory.tracker(target.tracker) as adapter:
                 _forget_search(adapter, job.tmdb_id)
                 found = adapter.search_by_tmdb(job.tmdb_id)
-                results, _suggested = upload_dupes.check(found, summary)
+                results, _suggested = upload_dupes.check(
+                    upload_analysis.same_content(job, found, categories), summary, keys, threshold)
         except Exception as exc:
             logger.warning("Upload %s: dupe check prima dell'invio fallito su %s", job.id, target.tracker.label,
                            exc_info=True)
@@ -1784,7 +1788,9 @@ def _recheck_dupes(session: Session, job: UploadJob, targets: list[UploadTarget]
             # 2026-10-18). Si va avanti, ma il registro lo dice.
             upload_jobs.log_event(session, job, "dupe_recheck_truncated", level="warning", target=target,
                                   results=len(found))
-        new = [r for r in results if r["verdict"] in ("identical", "same_slot") and r["torrent_id_remote"] not in known]
+        # Un identico, o un dupe vivo (come suggest): un dupe morto, un trump o
+        # un possibile dupe non fermano l'upload, come alla decisione.
+        new = [r for r in results if upload_dupes.blocks_upload(r) and r["torrent_id_remote"] not in known]
         if new:
             upload_jobs.set_target_status(target, upload_jobs.TargetStatus.FAILED)
             target.error_message = "upload_dupe_appeared"

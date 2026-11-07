@@ -15,9 +15,11 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session, object_session
 
+from nazgarr.core import settings_registry
 from nazgarr.core.models import TrackerUploadProfile, UploadJob, UploadTarget
 from nazgarr.integrations.adapter_factory import TmdbApiKeyMissingError
 from nazgarr.torrents import client_labels
+from nazgarr.upload import dupes as upload_dupes
 from nazgarr.upload import file_names as upload_file_names
 from nazgarr.upload import jobs as upload_jobs
 from nazgarr.upload import naming_rules, streaming_services
@@ -194,6 +196,8 @@ def propose(session: Session, job: UploadJob) -> None:
     """Nome, id del profilo e flag proposti per ogni tracker, dai valori
     rilevati e dagli override. Rifatto a ogni cambio di override; non tocca
     mai quello che l'utente ha già approvato."""
+    from nazgarr.upload import analysis as upload_analysis  # import qui: analysis importa questo modulo
+
     from_name = upload_file_names.name_detected(session, job)
     overrides = json.loads(job.overrides_json or "{}")
     analysis = json.loads(job.analysis_json or "{}")
@@ -202,7 +206,12 @@ def propose(session: Session, job: UploadJob) -> None:
     generic = release_values(job, from_name, mediainfo, {}, None)
     analysis["detected"] = {key: generic.get(key) for key in DETECTED_FIELDS}
     analysis["type_basis"] = generic.get("type_basis")
+    # Il dupe check segue gli override (tipo, risoluzione, codec, HDR corretti a mano).
+    dupe_values = release_values(job, from_name, mediainfo, overrides, None)
+    dupe_source = upload_analysis.summary_of(job, [], analysis, dupe_values)
+    threshold = settings_registry.get_int(session, upload_dupes.THRESHOLD_SETTING)
     for target in job.targets:
+        _rejudge_dupes(target, dupe_source, threshold, analysis.get("seeding_here") or {})
         profile = _profile(session, target)
         categories, types, resolutions = _maps(profile)
         rules = with_tracker_language(profile_rules(profile), target.tracker.language) or {}
@@ -239,6 +248,19 @@ def propose(session: Session, job: UploadJob) -> None:
 
 
 PREVIEW_FILES = 8
+
+
+def _rejudge_dupes(target: UploadTarget, source, threshold: int, seeding_here: dict) -> None:
+    """Un nuovo verdetto per i dupe salvati (upload_dupes.rejudge), finché
+    il tracker aspetta la decisione: non durante un full hash check, che
+    riscrive dupes_json con la sua verifica, né dopo che l'utente ha deciso."""
+    if (not target.dupes_json or target.action is not None
+            or target.status != upload_jobs.TargetStatus.AWAITING_DECISION):
+        return
+    results, suggested = upload_dupes.rejudge(json.loads(target.dupes_json), source, threshold)
+    target.dupes_json = json.dumps(results)
+    if target.suggested_action is not None:
+        target.suggested_action = "skip" if str(target.id) in seeding_here else suggested
 
 
 def file_names_preview(session: Session, job: UploadJob) -> dict:

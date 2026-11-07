@@ -354,8 +354,10 @@ def _mi_hdr_full(video: dict) -> str | None:
     return ".".join(tags) or None
 
 
-# Per chi confronta l'HDR di più file (nazgarr/upload/pack.py).
+# Per chi confronta l'HDR di più file (nazgarr/upload/pack.py) o con un
+# torrent del tracker (nazgarr/upload/dupes.py).
 hdr_full = _mi_hdr_full
+mi_hdr = _mi_hdr
 
 
 _HYBRID = re.compile(r"(?:^|[ ._\-\[(])HYBRID(?:$|[ ._\-\])])", re.IGNORECASE)
@@ -510,6 +512,9 @@ def _audio_label(track: dict, codecs: dict) -> str | None:
 
 def _is_commentary(track: dict) -> bool:
     return "comment" in str(track.get("title") or "").lower()
+
+
+is_commentary = _is_commentary  # anche le tracce di un torrent del tracker (nazgarr/upload/dupes.py)
 
 
 def _audio_values(tracks: list[dict], rules: dict) -> dict:

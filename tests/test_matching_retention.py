@@ -81,6 +81,26 @@ def test_a_torrent_with_unsafe_names_in_the_catalog_is_ignored(db_session, tmp_p
     assert db_session.query(Candidate).count() == 0
 
 
+def test_a_movie_with_the_same_tmdb_id_as_the_series_is_ignored(db_session, tmp_path, monkeypatch):
+    """movie/X e tv/X sono numerazioni diverse: la ricerca per tmdbId le
+    mescola, le categorie del profilo del tracker le separano."""
+    from nazgarr.upload import profiles as upload_profiles
+
+    _no_mediainfo(monkeypatch)
+    _disk, tracker, _files = _library(db_session, tmp_path)
+    upload_profiles.restore_upload_profile(db_session, upload_profiles.create_upload_profile(db_session, tracker, None),
+                                           "itt")
+    film = TorrentCandidate(
+        torrent_id_remote="500", info_hash=None, name="Show.S01E01.720p-OTHER.mkv", size_bytes=999,
+        file_list=["Show.S01E01.720p-OTHER.mkv"], mediainfo_unique_id=None, folder=None, download_link=None,
+        file_sizes={"Show.S01E01.720p-OTHER.mkv": 999}, category_id=1,
+    )
+
+    matching.run_media_to_torrent_matching(db_session, tracker, PackTracker([film]))
+
+    assert db_session.query(Candidate).count() == 0
+
+
 OTHER_FOLDER = "Show.S01.1080p-OTHER"
 OTHER_FILES = {name.replace("GRP", "OTHER"): content for name, content in PACK_FILES.items()}
 

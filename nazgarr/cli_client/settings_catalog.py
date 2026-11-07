@@ -55,6 +55,8 @@ CATALOG = [
     Setting("upload_releaser_name", "Your group name: watched-folder uploads, and uploads whose name has no group."),
     Setting("upload_auto_match_threshold", "TMDB match confirmed on its own at or above this (0-1, 0 = off).",
             "float"),
+    Setting("upload_dupe_threshold",
+            "Dupe check: a release in the same slot is a dupe from this score (0-100, default 70).", "int"),
     Setting("upload_auto_rename", "Rename files in new torrents automatically (true/false).", "bool"),
     Setting("upload_single_file", "A folder with one file becomes a single-file torrent (true/false).", "bool"),
     Setting("upload_single_file_folder", "With upload_single_file: keep or remove the folder.", "choice",

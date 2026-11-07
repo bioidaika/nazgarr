@@ -188,8 +188,13 @@ class UploadDupeResponse(BaseModel):
     torrent_id_remote: str
     name: str = ""
     size_bytes: int | None = None
-    verdict: Literal["identical", "same_slot", "different"]
+    verdict: Literal["identical", "same_slot", "trump", "possible", "different"]
+    # 0-100: quanto dello slot è noto e uguale (same_slot, trump, possible); None per gli altri.
+    score: int | None = None
     reasons: list[str] = []
+    unknown: list[str] = []  # i tratti che non si sanno (coverage, resolution, type, codec, hdr, languages)
+    seeders: int | None = None  # 0: un torrent morto; None se il tracker non lo dice
+    size_delta: float | None = None  # (sorgente - torrent) / torrent
     verification: UploadDupeVerification | None = None
 
 

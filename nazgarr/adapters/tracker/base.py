@@ -24,8 +24,14 @@ from urllib.parse import parse_qs, urljoin, urlsplit
 import httpx
 
 from nazgarr.core import http_limits, net_guard
+from nazgarr.library import mediainfo_text
 
 logger = logging.getLogger(__name__)
+
+
+def _count(value) -> int | None:
+    """Un intero non negativo dalla risposta del tracker, o None."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
 def host_of_url(url: str | None) -> str | None:
@@ -106,6 +112,14 @@ class TorrentCandidate:
     # utile per un futuro motore di matching season-pack-aware (fuori scope in questa fase,
     # vedi nazgarr/reseed/matching.py) — il blob media_info per un pack è la concatenazione dei report
     # per-file, mediainfo_unique_id da solo cattura solo il primo.
+    # Per il dupe check di un upload (docs/SPEC.md §9 "Dupe check"); None se il tracker non lo dice.
+    # category_id: film e serie hanno numerazioni TMDB diverse, la ricerca per tmdbId le mescola.
+    category_id: int | None = None
+    type_id: int | None = None
+    resolution: str | None = None  # come la scrive il tracker, es. "1080p"
+    seeders: int | None = None
+    # Il MediaInfo del primo file, letto dal testo del tracker (nazgarr/library/mediainfo_text.py).
+    media_info_summary: dict | None = None
 
 
 @dataclass
@@ -711,6 +725,12 @@ class Unit3dTrackerAdapter(TrackerAdapter):
             download_link=attrs.get("download_link"),
             file_sizes=file_sizes,
             mediainfo_unique_ids_by_filename=self._extract_unique_ids_by_filename(attrs.get("media_info")),
+            category_id=_count(attrs.get("category_id")),
+            type_id=_count(attrs.get("type_id")),
+            resolution=attrs["resolution"][:20] if isinstance(attrs.get("resolution"), str) else None,
+            seeders=_count(attrs.get("seeders")),
+            media_info_summary=mediainfo_text.summarize(
+                attrs["media_info"] if isinstance(attrs.get("media_info"), str) else None),
         )
 
     @staticmethod

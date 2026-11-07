@@ -5762,12 +5762,23 @@ export interface components {
              * Verdict
              * @enum {string}
              */
-            verdict: "identical" | "same_slot" | "different";
+            verdict: "identical" | "same_slot" | "trump" | "possible" | "different";
+            /** Score */
+            score?: number | null;
             /**
              * Reasons
              * @default []
              */
             reasons: string[];
+            /**
+             * Unknown
+             * @default []
+             */
+            unknown: string[];
+            /** Seeders */
+            seeders?: number | null;
+            /** Size Delta */
+            size_delta?: number | null;
             verification?: components["schemas"]["UploadDupeVerification"] | null;
         };
         /**
