@@ -9,7 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { t, uiLocale } from '@/lib/i18n'
 import { formatBytes } from '@/lib/library-filters'
-import { dupeUrl } from '@/lib/upload'
+import { dupeUrl, needsResurrectionClaim } from '@/lib/upload'
 import { cn } from '@/lib/utils'
 import { safeHref } from '@/lib/safeUrl'
 
@@ -78,13 +78,6 @@ function dupeNotes(dupe: Dupe): string[] {
 // Motivi e verifica in una riga: per il title quando su desktop si tronca.
 function dupeDetails(dupe: Dupe): string {
   return [...dupeNotes(dupe), verificationText(dupe)].filter(Boolean).join(' · ')
-}
-
-// Un identico senza seeder, verificato: il reseed lo resuscita, e la
-// resurrection va rivendicata sul tracker prima che parta (decisione
-// dell'utente, 2026-11-07). Un avviso, mai un blocco: la conferma lo richiede.
-export function needsResurrectionClaim(dupe: Dupe | undefined): boolean {
-  return dupe?.verdict === 'identical' && dupe.seeders === 0 && dupe.verification?.status === 'passed'
 }
 
 function languageName(code: string) {

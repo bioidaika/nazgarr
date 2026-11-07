@@ -13,7 +13,7 @@ import { OverridesPanel } from '@/components/upload/OverridesPanel'
 import { PackMixedCard } from '@/components/upload/PackMixedCard'
 import { ScheduleField } from '@/components/upload/ScheduleField'
 import { TargetDecisionForm } from '@/components/upload/TargetDecisionForm'
-import { ActionBadge, TrackerCheckCard, needsResurrectionClaim } from '@/components/upload/TrackerCheckCard'
+import { ActionBadge, TrackerCheckCard } from '@/components/upload/TrackerCheckCard'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
@@ -28,7 +28,7 @@ import type { MediaInfoSummary } from '@/lib/mediainfo'
 import { packMixed, packMixedConfirmed } from '@/lib/pack'
 import { fromLocalInput } from '@/lib/schedule'
 import { safeHref } from '@/lib/safeUrl'
-import { dupeUrl, effectiveDraft, plannedMediaInfo, sourceMissing, type TargetDraft } from '@/lib/upload'
+import { dupeUrl, effectiveDraft, needsResurrectionClaim, plannedMediaInfo, sourceMissing, type TargetDraft } from '@/lib/upload'
 
 // Secondo punto di approvazione (docs/SPEC.md §9): cosa ha trovato
 // l'analisi, i valori rilevati da correggere e, per ogni tracker, dupe

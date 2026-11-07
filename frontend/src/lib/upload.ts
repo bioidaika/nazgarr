@@ -165,6 +165,15 @@ export function dupeUrl(target: { tracker_base_url: string | null }, torrentId: 
   return target.tracker_base_url ? `${target.tracker_base_url}/torrents/${torrentId}` : null
 }
 
+// Un identico senza seeder, verificato: il reseed lo resuscita, e la
+// resurrection va rivendicata sul tracker prima che parta (decisione
+// dell'utente, 2026-11-07). Un avviso, mai un blocco: la conferma lo richiede.
+export function needsResurrectionClaim(
+  dupe: { verdict: string; seeders?: number | null; verification?: { status: string } | null } | undefined,
+): boolean {
+  return dupe?.verdict === 'identical' && dupe.seeders === 0 && dupe.verification?.status === 'passed'
+}
+
 // Link alla pagina di nuovo upload con sorgente e id già compilati (dalla
 // vista poster): il match con quel TMDB è immediato, e se il tracker ha già
 // la release identica il flusso stesso propone il reseed.
