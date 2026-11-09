@@ -63,7 +63,7 @@ _ALPHA3 = {
     "jpn": "ja", "kor": "ko", "chi": "zh", "zho": "zh", "rus": "ru", "dut": "nl", "nld": "nl", "swe": "sv",
     "dan": "da", "nor": "no", "nob": "no", "fin": "fi", "pol": "pl", "cze": "cs", "ces": "cs", "hun": "hu",
     "tur": "tr", "gre": "el", "ell": "el", "heb": "he", "ara": "ar", "hin": "hi", "tha": "th", "ukr": "uk",
-    "rum": "ro", "ron": "ro",
+    "rum": "ro", "ron": "ro", "vie": "vi",
 }
 
 

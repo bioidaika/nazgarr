@@ -19,6 +19,7 @@ fine con group_separator. Il nome resta una proposta, sempre modificabile.
 
 import json
 import re
+import unicodedata
 
 from nazgarr.library.guess import as_list
 from nazgarr.library.guess import guess as guess_name
@@ -98,8 +99,46 @@ LANG3 = {
     "it": "ITA", "en": "ENG", "fr": "FRA", "de": "DEU", "es": "SPA", "pt": "POR", "ja": "JPN", "ko": "KOR",
     "zh": "ZHO", "ru": "RUS", "nl": "NLD", "sv": "SWE", "da": "DAN", "no": "NOR", "nb": "NOR", "fi": "FIN",
     "pl": "POL", "cs": "CES", "hu": "HUN", "tr": "TUR", "el": "ELL", "he": "HEB", "ar": "ARA", "hi": "HIN",
-    "th": "THA", "uk": "UKR", "ro": "RON",
+    "th": "THA", "uk": "UKR", "ro": "RON", "vi": "VIE",
 }
+
+_VMF_TAG_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:ViE(?:[ .-]+(?P<dub>(?i:DUB)))?|(?P<casefolded_dub>(?i:VIE[ .-]+DUB)))(?![A-Za-z0-9])"
+)
+_DUB_TITLE_PATTERNS = (re.compile(r"\blong\s+tieng\b"), re.compile(r"\b(?:uslt|vnlt)\b"))
+_VOICEOVER_TITLE_PATTERNS = (re.compile(r"\bthuyet\s+minh\b"), re.compile(r"\btm\b"))
+
+
+def _normalized_ascii_words(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.casefold()).replace("đ", "d")
+    ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", " ", ascii_text).strip()
+
+
+def _vie_audio_tag(source_name: str | None = None, tracks: list[dict] | None = None) -> str | None:
+    """Detect VietMediaF audio slot tag ('ViE DUB' or 'ViE') from MediaInfo audio tracks or release name."""
+    usable = [t for t in (tracks or []) if not _is_commentary(t)]
+    titles = [_normalized_ascii_words(str(t.get("title") or "")) for t in usable if t.get("title")]
+    if any(p.search(title) for title in titles for p in _DUB_TITLE_PATTERNS):
+        return "ViE DUB"
+    if any(p.search(title) for title in titles for p in _VOICEOVER_TITLE_PATTERNS):
+        return "ViE"
+    for track in usable:
+        lang = str(track.get("language") or "").strip().lower()
+        code = lang.split("-")[0].split("_")[0]
+        if code in ("vi", "vie", "vietnamese") or "tieng viet" in _normalized_ascii_words(lang):
+            if source_name:
+                matches = list(_VMF_TAG_RE.finditer(source_name))
+                if any(m.group("dub") or m.group("casefolded_dub") for m in matches):
+                    return "ViE DUB"
+            return "ViE"
+    if source_name:
+        matches = list(_VMF_TAG_RE.finditer(source_name))
+        if any(m.group("dub") or m.group("casefolded_dub") for m in matches):
+            return "ViE DUB"
+        if matches:
+            return "ViE"
+    return None
 
 
 # "VU" (video untouched, la convenzione dei remux su ITT) e "UNTOUCHED": un
@@ -257,6 +296,7 @@ def detect(source_name: str) -> dict:
         "video_codec": _name_video_codec(guess, release),
         "audio": _name_audio(guess),
         "audio_languages": None,
+        "vie_audio_tag": _vie_audio_tag(source_name, None),
         "group": guess.get("release_group"),
     }
 
@@ -690,6 +730,9 @@ def release_values(
         values.update({k: v for k, v in audio.items() if k != "audio"})
         values["audio"] = audio.get("audio") or values["audio"]
         values["audio_languages"] = _languages_value(tracks, rules.get("audio_languages"))
+    mi_vie_tag = _vie_audio_tag(None, tracks)
+    detected_vie_tag = detected.get("vie_audio_tag")
+    values["vie_audio_tag"] = "ViE DUB" if "ViE DUB" in (mi_vie_tag, detected_vie_tag) else (mi_vie_tag or detected_vie_tag)
     # Senza MediaInfo le tracce le dice solo il nome della release.
     values["audio_all"] = values.get("audio_all") or values.get("audio")
     if subtitles:
@@ -802,6 +845,9 @@ def build_name(rules: dict | None, values: dict) -> str:
     if values.get("season") and "{season}" not in template:
         anchor = "({year})" if "({year})" in template else "{year}" if "{year}" in template else "{title}"
         template = template.replace(anchor, f"{anchor} {{season}}", 1)
+    vie_tag = values.get("vie_audio_tag") if rules.get("vie_audio_tag") else None
+    if vie_tag and "{resolution}" in template:
+        template = template.replace("{resolution}", f"{vie_tag} {{resolution}}", 1)
     group = values.get("group")
     rendered = _render(template, values)
     rendered = re.sub(r"\(\s*\)|\[\s*\]", "", rendered)

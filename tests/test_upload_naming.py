@@ -541,3 +541,44 @@ def test_bamtech_audio_means_a_web_dl(db_session):
                                {"video": video, "audio": [{"format": "E-AC-3"}]}, {}, None)
     assert from_text["source"] == "WEB-DL"
     assert not streaming_audio([{"title": "English"}], "General\nTitle : BAMTech\n")  # solo nell'audio
+
+
+def test_vietmediaf_bundled_naming_and_vie_audio_tag():
+    vmf_rules = upload_profiles._load_bundled_profile("vietmediaf")["upload"]["naming"]
+
+    # 1. Original English WEB-DL (no Vietnamese audio)
+    orig_vals = release_values(
+        _job(),
+        detect("Movie.2009.1080p.NF.WEB-DL.DDP5.1.H.264-GRP"),
+        {"video": {"format": "AVC", "height": 1080}, "audio": [{"language": "en", "format": "E-AC-3", "channels": 6}]},
+        {},
+        vmf_rules,
+    )
+    assert build_name(vmf_rules, orig_vals) == "17 Again 2009 1080p NF WEB-DL DD+ 5.1 H.264-GRP"
+
+    # 2. Vietnamese Voice-Over (language="vi" or Title="Thuyết minh") -> inserts "ViE" before resolution
+    vie_vals = release_values(
+        _job(),
+        detect("Movie.2009.1080p.NF.WEB-DL.DDP5.1.H.264-GRP"),
+        {
+            "video": {"format": "AVC", "height": 1080},
+            "audio": [{"language": "vi", "title": "Thuyết minh", "format": "E-AC-3", "channels": 6}],
+        },
+        {},
+        vmf_rules,
+    )
+    assert build_name(vmf_rules, vie_vals) == "17 Again 2009 ViE 1080p NF WEB-DL DD+ 5.1 H.264-GRP"
+
+    # 3. Vietnamese Dub (Title="Lồng tiếng" or ViE.DUB in filename) -> inserts "ViE DUB" before resolution
+    dub_vals = release_values(
+        _job(),
+        detect("Movie.2009.ViE.DUB.2160p.UHD.BluRay.REMUX.TrueHD.7.1.Atmos.DV.HDR.HEVC-GRP"),
+        {
+            "video": {"format": "HEVC", "height": 2160, "hdr_format": "Dolby Vision / SMPTE ST 2086"},
+            "audio": [{"language": "vi", "title": "Lồng tiếng", "format": "MLP FBA", "channels": 8, "format_additional_features": "16-ch"}],
+        },
+        {},
+        vmf_rules,
+    )
+    assert build_name(vmf_rules, dub_vals) == "17 Again 2009 ViE DUB 2160p BluRay REMUX TrueHD 7.1 Atmos DV HDR HEVC-GRP"
+

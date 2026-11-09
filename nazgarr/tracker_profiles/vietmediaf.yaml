@@ -1,0 +1,67 @@
+# Bundled profile for VietMediaF (VMF), UNIT3D tracker.
+key: vietmediaf
+label: "VietMediaF (VMF)"
+adapter_type: unit3d
+base_url: "https://tracker.vietmediaf.store"
+announce_url_page: "https://tracker.vietmediaf.store/torrents/create"
+upload:
+  category_id:
+    movie: 1
+    tv: 2
+  type_id:
+    DISC: 1
+    REMUX: 2
+    ENCODE: 3
+    WEBDL: 4
+    WEBRIP: 5
+    HDTV: 6
+    DVDRIP: 3
+    BRRIP: 3
+    WEBMUX: 4
+    DLMUX: 4
+  resolution_id:
+    "8640p": 10
+    "4320p": 1
+    "2160p": 2
+    "1440p": 3
+    "1080p": 3
+    "1080i": 4
+    "720p": 5
+    "576p": 6
+    "576i": 7
+    "480p": 8
+    "480i": 9
+  naming:
+    version: 1
+    force: false
+    title: original
+    vie_audio_tag: true
+    audio_languages:
+      style: none
+    subs_languages:
+      style: none
+    subs_format: ""
+    group_separator: "-"
+    templates:
+      default: "{title} {year} {edition} {repack} {resolution} {source_full} {hybrid} {type} {audio} {hdr} {video_codec} {group}"
+      tv: "{title} {season} {edition} {repack} {resolution} {source_full} {hybrid} {type} {audio} {hdr} {video_codec} {group}"
+    type_labels:
+      REMUX: "REMUX"
+      WEBDL: "WEB-DL"
+      WEBRIP: "WEBRip"
+      ENCODE: ""
+      HDTV: "HDTV"
+      DVDRIP: "DVDRip"
+      BRRIP: "BRRip"
+  description_template: |
+    {% if screenshot_urls %}[center]{% for url in screenshot_urls %}[url={{ url }}][img=700]{{ url }}[/img][/url]{% if loop.last %}{% elif loop.index is divisibleby 2 %}
+    {% else %} {% endif %}{% endfor %}[/center]{% endif %}
+    {% if notes %}
+    {{ notes }}
+    {% endif %}
+  freeleech:
+    options: [25, 50, 75, 100]
+    default: 0
+  default_flags:
+    anonymous: false
+    personal_release: false

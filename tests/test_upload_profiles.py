@@ -18,6 +18,8 @@ def test_list_bundled_profiles_includes_itt():
 
     keys = {p["key"] for p in profiles}
     assert "itt" in keys
+    assert "vietmediaf" in keys
+    assert upload_profiles.bundled_key_for_url("https://tracker.vietmediaf.store") == "vietmediaf"
 
 
 def test_create_upload_profile_from_bundled_key(db_session):

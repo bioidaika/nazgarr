@@ -75,7 +75,7 @@ const NO_LANGUAGE = 'none'
 // Le lingue che il naming sa scrivere (nazgarr/upload/naming.py LANG3), ISO 639-1.
 const LANGUAGES = [
   'ar', 'cs', 'da', 'de', 'el', 'en', 'es', 'fi', 'fr', 'he', 'hi', 'hu', 'it', 'ja', 'ko', 'nl', 'no', 'pl', 'pt',
-  'ro', 'ru', 'sv', 'th', 'tr', 'uk', 'zh',
+  'ro', 'ru', 'sv', 'th', 'tr', 'uk', 'vi', 'zh',
 ]
 
 function languageName(code: string) {
